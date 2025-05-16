@@ -32,18 +32,22 @@ func (h *GptHandler) SendContentHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"status": http.StatusBadRequest, "error": "Invalid request format: " + err.Error()})
 		return
 	}
-
-	res, err := h.service.sendContent(c, req)
-
-	if err != nil {
-		c.JSON(400, gin.H{"error": "無效的請求格式"})
-		c.JSON(http.StatusBadRequest, gin.H{"status": http.StatusBadRequest, "error": "Invalid request format: " + err.Error()})
+	// 限制一段時間次數 不等待 沒有次數就報錯
+	if !h.service.limiter.Allow() {
+		log.Println("Rate limit exceeded")
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "Rate limit exceeded"})
 		return
 	}
+	// if err := h.service.limiter.Wait(context.Background()); err != nil {
+	// 	log.Printf("Rate limit exceeded: %v\n", err)
+	// 	c.JSON(429, gin.H{"error": "Rate limit exceeded"})
+	// }
+
+	res, err := h.service.SendContent(c, req)
 
 	if err != nil {
-		fmt.Printf("呼叫 OpenAI API 出錯: %v\n", err)
-		c.JSON(http.StatusBadRequest, gin.H{"status": http.StatusBadRequest, "error": "Invalid request format: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"status": http.StatusBadRequest, "error": err.Error()})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -59,6 +63,13 @@ func (h *GptHandler) StreamHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 	}
 
+	// 限制一段時間次數 不等待 沒有次數就報錯
+	if !h.service.limiter.Allow() {
+		log.Println("Rate limit exceeded")
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "Rate limit exceeded"})
+		return
+	}
+
 	// c.Writer.Header().Set("Content-Type", "text/plain")
 	// c.Writer.Header().Set("Transfer-Encoding", "chunked")
 	// c.Writer.Header().Set("Cache-Control", "no-cache")
@@ -70,7 +81,7 @@ func (h *GptHandler) StreamHandler(c *gin.Context) {
 
 	// for i := 1; i <= 5; i++ {
 
-	res, err := h.service.sendContent(c, req)
+	res, err := h.service.SendContent(c, req)
 	fmt.Print(res)
 	// _, err = c.Writer.Write([]byte(*res))
 	if err != nil {
